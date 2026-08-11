@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ArrowRight, CheckCircle2, ExternalLink, Fingerprint, LoaderCircle, Radar, ShieldCheck } from "lucide-react";
 import { connectArkivWallet } from "@/lib/wallet";
@@ -8,6 +9,7 @@ import { connectArkivWallet } from "@/lib/wallet";
 function Brand() { return <Link className="brand focus-ring" href="/"><span className="brand-mark"><span /></span><b>CARDINAL</b></Link>; }
 
 export default function LandingPage() {
+  const router = useRouter();
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState("");
 
@@ -16,7 +18,7 @@ export default function LandingPage() {
     setError("");
     try {
       await connectArkivWallet();
-      window.location.assign("/dashboard");
+      router.push("/dashboard");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Connect a wallet to continue.");
     } finally {
