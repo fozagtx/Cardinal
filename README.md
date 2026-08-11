@@ -4,6 +4,8 @@ Cardinal is an MCP agent registry built on Arkiv Braga.
 
 [Try Cardinal](https://trycardinal.vercel.app) · [GitHub](https://github.com/fozagtx/Cardinal)
 
+[Read the 40-second pitch](./README-PITCH.md) · [View the architecture diagrams](./README-DIAGRAM.md)
+
 ## The problem
 
 MCP agent directories can retain dead endpoints, unsafe Agent Cards, and records with no recent proof of availability. Users discover an agent, attempt to connect, and only then learn that it is offline or exposes sensitive configuration.
