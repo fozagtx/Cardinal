@@ -1,49 +1,60 @@
 # Cardinal
 
-A wallet-gated MCP agent registry built on Arkiv. Cardinal only shows agents with an unexpired card, a clean scan verdict, and recent liveness evidence.
+Cardinal is an MCP agent registry built on Arkiv Braga.
 
-**Try Cardinal:** [https://trycardinal.vercel.app](https://trycardinal.vercel.app)
+[Try Cardinal](https://trycardinal.vercel.app) · [GitHub](https://github.com/fozagtx/Cardinal)
 
-**GitHub:** [https://github.com/fozagtx/Cardinal](https://github.com/fozagtx/Cardinal)
+## The problem
 
-## What it does
+MCP agent directories can retain dead endpoints, unsafe Agent Cards, and records with no recent proof of availability. Users discover an agent, attempt to connect, and only then learn that it is offline or exposes sensitive configuration.
 
-- **Registry:** reads real agent records from Arkiv Braga.
-- **Scanner:** checks Agent Cards for exposed keys, tokens, internal hostnames, and private or reserved IPs.
-- **Probe:** sends a real MCP `initialize` request with a 10-second timeout.
-- **Wallet:** connects an injected EVM wallet on Braga and lets an operator publish an expiring agent card.
-- **Dashboard:** provides registry search, scanning, probing, and claiming in a separate application route.
+## Why Cardinal
 
-No fake agents, metrics, scans, attestations, or fallback listings are included.
+Cardinal makes evidence part of discovery. A registry result is assembled from three Arkiv entities:
 
-## Trust flow
+- an unexpired Agent Card
+- a passing security verdict for that card
+- a recent MCP liveness attestation
 
-```text
-Agent card  →  security scan  →  live MCP probe  →  curated registry result
+Arkiv entity expiry removes records that stop being maintained. Wallet signatures identify the publishers of cards and evidence.
+
+## How it works
+
+```mermaid
+flowchart LR
+    O[Agent operator] -->|Publish with wallet| C[Expiring Agent Card]
+    C --> S[Security scanner]
+    C --> P[MCP endpoint probe]
+    S --> V[Scan verdict]
+    P --> A[Liveness attestation]
+    C --> Q[Cardinal registry query]
+    V --> Q
+    A --> Q
+    Q --> R[Curated MCP results]
+    C -. expires .-> X[Removed from live queries]
 ```
 
-Cards are Arkiv entities with expiry. If a card is not extended, it becomes stale and disappears from live queries.
+1. An operator connects an EVM wallet and publishes an Agent Card to Arkiv.
+2. The scanner checks the card for exposed secrets and private network details.
+3. The prober sends a real MCP `initialize` request to the endpoint.
+4. Cardinal queries Arkiv and joins the card with its verdict and attestation.
+5. Expired cards disappear from live queries.
 
-## No custom smart contract
+## How it is built
 
-Cardinal does **not** need a new smart contract. It uses the existing Arkiv network through `@arkiv-network/sdk` and the Braga RPC. The connected wallet signs Arkiv entity writes; there is no Cardinal contract to deploy, audit, or configure.
+- **Frontend:** Next.js 16, React 19, TypeScript, Tailwind CSS
+- **Registry:** `@arkiv-network/sdk` with direct Braga RPC queries
+- **Wallet:** Viem with an injected EIP-1193 wallet
+- **Scanner:** Zod validation and `ipaddr.js` network checks
+- **Probe:** server-side MCP JSON-RPC request with a 10-second timeout
+- **Tests:** Vitest
+- **Deployment:** Vercel
 
-## Try it
-
-Open [trycardinal.vercel.app](https://trycardinal.vercel.app), connect an injected wallet, and enter the dashboard.
-
-The app targets Arkiv Braga:
-
-- **Chain ID:** `60138453102`
-- **RPC:** `https://braga.hoodi.arkiv.network/rpc`
-- **Explorer:** `https://explorer.braga.hoodi.arkiv.network`
-- **Native token:** GLM
-
-A Braga-compatible wallet, such as MetaMask or Rabby, is required for wallet-gated features. Registering a card also requires Braga funds for entity-write fees.
+Cardinal uses Arkiv's existing protocol through its SDK. No custom smart contract deployment is required.
 
 ## Run locally
 
-Requirements: Node.js 20+, npm, and an injected EVM wallet for write flows.
+Requires Node.js 20+ and npm.
 
 ```bash
 git clone https://github.com/fozagtx/Cardinal.git
@@ -54,44 +65,24 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-Useful checks:
-
 ```bash
 npm run lint
 npm test
 npm run build
 ```
 
-## API routes
+## Network
 
-| Route | Method | Purpose |
-| --- | --- | --- |
-| `/api/agents` | `GET` | Query curated agents from Arkiv |
-| `/api/scan` | `POST` | Validate and scan an Agent Card |
-| `/api/probe` | `POST` | Probe an MCP HTTP endpoint |
+| Setting | Value |
+| --- | --- |
+| Network | Arkiv Braga |
+| Chain ID | `60138453102` |
+| RPC | `https://braga.hoodi.arkiv.network/rpc` |
+| Explorer | `https://explorer.braga.hoodi.arkiv.network` |
+| Token | GLM |
 
-## Current limits
+Agent Card writes require an injected EVM wallet and Braga GLM.
 
-This is a hackathon prototype, not a production trust authority.
+## Current status
 
-- Verdict and attestation entity owners are not yet checked against approved trust-anchor wallets.
-- Claiming proves wallet-signed publication, not DNS or endpoint ownership.
-- Scanner and prober results are not yet published by independent onchain service workers.
-- The probe performs `initialize`, but not `tools/list`.
-- Crawler/indexer, heartbeat, Cardinal MCP server, badge service, and standalone scanner CLI are roadmap items.
-- Braga is a testnet, so records and availability can change.
-
-Never put private keys or service-wallet secrets in Agent Cards, browser code, repository files, or chat.
-
-## Project structure
-
-```text
-src/app/                 Pages and API routes
-src/components/          Landing page and dashboard
-src/lib/registry.ts      Arkiv registry query
-src/lib/scanner.ts       Agent Card scanner
-src/lib/probe.ts         MCP liveness probe
-src/lib/wallet.ts        Braga wallet and Arkiv writes
-```
-
-There is no license file in this repository yet.
+The web registry, scanner, MCP probe, wallet connection, and expiring Agent Card writes are implemented. Trust-anchor owner checks, endpoint ownership proofs, independent onchain scanner and prober workers, heartbeat, crawler, badge service, and the Cardinal MCP server remain in development.
