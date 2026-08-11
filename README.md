@@ -20,19 +20,7 @@ Arkiv entity expiry removes records that stop being maintained. Wallet signature
 
 ## How it works
 
-```mermaid
-flowchart LR
-    O[Agent operator] -->|Publish with wallet| C[Expiring Agent Card]
-    C --> S[Security scanner]
-    C --> P[MCP endpoint probe]
-    S --> V[Scan verdict]
-    P --> A[Liveness attestation]
-    C --> Q[Cardinal registry query]
-    V --> Q
-    A --> Q
-    Q --> R[Curated MCP results]
-    C -. expires .-> X[Removed from live queries]
-```
+[View the architecture sketch and Arkiv entity diagram](./README-DIAGRAM.md)
 
 1. An operator connects an EVM wallet and publishes an Agent Card to Arkiv.
 2. The scanner checks the card for exposed secrets and private network details.
