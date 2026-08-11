@@ -1,29 +1,27 @@
-# Cardinal — Ideathon Arkiv Answers
+# Cardinal — Ideathon Submission Answers
 
 ## Entities & attributes
 
-Cardinal uses three Arkiv entity types.
+Cardinal is an MCP agent registry built around three related Arkiv entity types.
 
 ### `agent_card`
 
-Published by an agent operator or approved crawler.
-
-Queryable attributes:
+An operator or crawler publishes the agent’s discoverable identity and endpoint.
 
 ```text
-type = "agent_card"
-agent = "<stable agent identifier>"
-protocol = "mcp"
-class = "claimed" | "indexed"
-card_hash = "<SHA-256 hash>"
-endpoint_hash = "<SHA-256 hash>"
-root = "<operator wallet address>"
-version = 1
-registered_at = <Unix timestamp>
-cap_<capability> = 1
+type           = "agent_card"
+agent          = stable agent identifier
+protocol       = "mcp"
+class          = "claimed" | "indexed"
+card_hash      = SHA-256 hash of the published card
+endpoint_hash  = SHA-256 hash of the endpoint
+root           = publishing wallet address
+version        = integer
+registered_at  = Unix timestamp
+cap_<name>     = 1 for each declared capability
 ```
 
-Payload:
+The payload contains the human-readable card:
 
 ```json
 {
@@ -35,41 +33,39 @@ Payload:
 
 ### `scan_verdict`
 
-Published by a recognized scanner wallet after checking an Agent Card.
-
-Queryable attributes:
+A scanner publishes the result of a security check against a specific `card_hash`.
 
 ```text
-type = "scan_verdict"
-card_hash = "<matching Agent Card hash>"
-verdict = "pass" | "reject"
-scanned_at = <Unix timestamp>
-ruleset_version = <integer>
+type             = "scan_verdict"
+card_hash        = matching Agent Card hash
+verdict          = "pass" | "reject"
+scanned_at       = Unix timestamp
+ruleset_version  = integer
 ```
 
-Detailed findings stay out of public attributes. The scanner records finding classes and field paths without reproducing detected secrets.
+The public record contains the verdict and its versioned metadata. Secret values never enter Arkiv. Findings are represented by field paths and finding classes, such as `private_key` or `internal_hostname`.
 
 ### `attestation`
 
-Published by a recognized prober wallet after contacting the MCP endpoint.
-
-Queryable attributes:
+A prober publishes the result of contacting the MCP endpoint.
 
 ```text
-type = "attestation"
-agent = "<matching agent identifier>"
-result = "pass" | "auth_required" | "fail"
-checked_at = <Unix timestamp>
-latency_ms = <integer>
-probe_version = <integer>
-status_code = <integer>
+type           = "attestation"
+agent          = matching agent identifier
+result         = "pass" | "auth_required" | "fail"
+checked_at     = Unix timestamp
+latency_ms     = integer
+probe_version  = integer
+status_code    = integer
 ```
 
-`registered_at`, `scanned_at`, `checked_at`, `latency_ms`, `status_code`, and version fields are numeric so they support ordering and range filters.
+Timestamps, latency, status codes, versions, and other ordered values are stored as integers so Arkiv range filters and ordering can operate on them.
+
+The current prototype writes Agent Cards and performs scanning and probing through the web app. Independent scanner and prober wallets publishing `scan_verdict` and `attestation` entities are the next service layer.
 
 ## The queries you rely on
 
-The main query begins with live MCP Agent Cards:
+Cardinal starts by selecting MCP Agent Cards:
 
 ```ts
 where(
@@ -80,7 +76,7 @@ where(
 )
 ```
 
-For every card, Cardinal finds a passing verdict for the same card hash:
+For each card, it selects a passing verdict tied to the exact card hash:
 
 ```ts
 where(
@@ -92,7 +88,7 @@ where(
 )
 ```
 
-It then finds the latest passing liveness attestation:
+It then selects the newest passing attestation for that agent:
 
 ```ts
 where(
@@ -106,66 +102,64 @@ where(
 .limit(1)
 ```
 
-The freshness policy applies a numeric lower bound:
+The production freshness query adds a numeric lower bound:
 
 ```ts
 gt("checked_at", minimumAcceptedTimestamp)
 ```
 
-A user asks Arkiv:
+The user-facing question is simple:
 
-> Show me live MCP agents with an unexpired Agent Card, a passing scan for the current card hash, and a recent passing endpoint attestation.
+> Which MCP agents have an unexpired card, a passing security verdict for that exact card, and a recent passing endpoint attestation?
 
-Cardinal currently fetches up to 100 candidate cards and supports text search over agent names and endpoints. Pagination and counts can be added as the registry grows.
+The current registry reads up to 100 candidate cards and filters search text across agent names and endpoints. Pagination and count queries are the next scaling additions.
 
 ## Expiry, extension & ownership
 
-Every Agent Card has an Arkiv expiry. The current claimed-card flow creates cards with a one-day lifetime.
+Agent Cards are time-scoped Arkiv entities. The current claim flow creates a card with a one-day lifetime. A production operator heartbeat will extend the card before expiry. When maintenance stops, the card leaves live registry results through Arkiv expiry.
 
-An operator must periodically extend the card to keep it discoverable. If the operator stops maintaining it, Arkiv removes it from live query results automatically.
+Cardinality of trust comes from separate publishers:
 
-Liveness uses two separate signals:
+- the operator wallet maintains the Agent Card;
+- an approved scanner wallet publishes the security verdict;
+- an approved prober wallet publishes the liveness attestation.
 
-1. The operator wallet maintains the Agent Card.
-2. An independent prober wallet publishes recent endpoint attestations.
+The registry will verify entity owners against published scanner and prober trust anchors before accepting evidence. Claimed agents will also complete an endpoint-control check through DNS TXT or a well-known URL challenge, linking the wallet claim to control of the advertised service.
 
-Ownership identifies who published each card, verdict, and attestation. The production policy will accept scan and probe evidence only from approved trust-anchor wallets.
+## Why Arkiv is the right fit
 
-Claimed agents will also use DNS TXT or a well-known endpoint challenge to connect the wallet identity to control of the advertised domain.
+Cardinal’s core product is a queryable evidence graph written by different parties. Operators publish identities, scanners publish security results, and probers publish liveness results. A client can read those records, inspect their authorship, and reproduce the registry’s admission query.
 
-## Why Arkiv, not a plain database?
+Arkiv supplies the properties Cardinal needs in the storage layer:
 
-Cardinal's registry is built around queryable evidence from multiple independent authors:
+- typed attributes for filtering and ordering;
+- entity ownership for verifiable authorship;
+- expiry for automatic removal of abandoned records;
+- direct reads that let builders verify the source data themselves;
+- a shared protocol where operators and evidence providers can publish independently.
 
-- operators publish Agent Cards;
-- scanners publish security verdicts;
-- probers publish liveness attestations;
-- clients verify the records and their owners directly.
-
-Arkiv gives every record verifiable authorship, expiry, and typed queryable attributes. Expiry is part of the product: abandoned listings leave live queries without a centralized administrator running cleanup jobs.
-
-A plain database would make Cardinal the sole authority over publication history, record ownership, evidence, and removal. Arkiv lets builders independently inspect the same records and reproduce Cardinal's registry query.
+A conventional database would require Cardinal to own the publication history, cleanup process, and evidence authority. Arkiv makes expiry, authorship, and queryable evidence part of the product’s data model.
 
 ## What stays off Arkiv?
 
-Cardinal keeps these off Arkiv:
+Cardinal stores compact discovery records and evidence metadata on Arkiv. These remain outside Arkiv:
 
-- private keys, API keys, access tokens, and authentication headers;
-- full scanner request bodies containing sensitive material;
-- detailed secret values found by the scanner;
-- MCP tool execution and hot-path agent traffic;
-- large logs, response bodies, screenshots, and other heavy files;
-- temporary probe connections and raw transport events;
-- private user preferences and wallet-extension state.
+- private keys, API keys, access tokens, and authorization headers;
+- raw scanner inputs when they contain sensitive material;
+- secret values found during scanning;
+- MCP tool execution and request-time agent traffic;
+- large logs, response bodies, screenshots, and media files;
+- temporary probe connections and transport events;
+- wallet-extension state and private user preferences.
 
-Arkiv stores compact discovery records, hashes, typed evidence, timestamps, ownership, and expiry. Scanning, probing, endpoint execution, and private data remain offchain.
+The rule is simple: Arkiv holds verifiable registry state. Private data, hot-path execution, and heavy transient material stay in the application and service layer.
 
 ## Did you use the Ideathon MCP server while shaping this idea?
 
-**B — No, I used the docs or the site instead.**
+**B — No. I used the Arkiv documentation and site instead.**
 
 ## Did you use the Arkiv MCP or docs?
 
-I used Arkiv's official SDK documentation, Braga chain configuration, query API, and the installed `@arkiv-network/sdk` type declarations. Cardinal connects directly to the Braga RPC through the SDK.
+I used the Arkiv SDK documentation, Braga network configuration, query API, and the installed `@arkiv-network/sdk` type declarations. The prototype connects directly to the Braga RPC through the SDK.
 
-The hardest part was designing the trust join correctly: matching a verdict to the exact Agent Card hash, matching an attestation to the agent, enforcing numeric freshness, and verifying that evidence was authored by an approved scanner or prober wallet. Expiry and extension also require a clear separation between operator-maintained identity and independently maintained liveness evidence.
+The hardest design problem was the evidence join: a verdict must point to the exact card hash, an attestation must point to the correct agent, freshness must be numeric and queryable, and evidence authors must be verified against approved trust anchors. Expiry also needed to be treated as a product feature, separating operator-maintained identity from independently maintained liveness.
