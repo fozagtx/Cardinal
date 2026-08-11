@@ -10,6 +10,14 @@ declare global {
   interface Window { ethereum?: EIP1193Provider }
 }
 
+export async function getConnectedArkivWallet() {
+  if (!window.ethereum) return null;
+  const accounts = await window.ethereum.request({ method: "eth_accounts" }) as Address[];
+  if (!accounts[0]) return null;
+  const chainId = await window.ethereum.request({ method: "eth_chainId" }) as string;
+  return chainId.toLowerCase() === chainHex.toLowerCase() ? accounts[0] : null;
+}
+
 export async function connectArkivWallet() {
   if (!window.ethereum) throw new Error("Install an EVM wallet to continue.");
   const accounts = await window.ethereum.request({ method: "eth_requestAccounts" }) as Address[];
